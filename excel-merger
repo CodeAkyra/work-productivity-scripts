@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Excel Workbook Merger V3</title>
+ 
+<style>
+body{
+    font-family:Arial;
+    background:#f4f6f9;
+    margin:40px;
+}
+ 
+.container{
+    max-width:700px;
+    margin:auto;
+    background:white;
+    padding:30px;
+    border-radius:10px;
+    box-shadow:0 0 10px rgba(0,0,0,.2);
+}
+ 
+h2{
+    text-align:center;
+}
+ 
+.drop{
+    border:3px dashed #007BFF;
+    padding:40px;
+    text-align:center;
+    cursor:pointer;
+    margin:20px 0;
+    border-radius:10px;
+}
+ 
+button{
+    padding:12px 25px;
+    background:#007BFF;
+    color:white;
+    border:none;
+    border-radius:5px;
+    cursor:pointer;
+    font-size:16px;
+}
+ 
+button:hover{
+    background:#0056b3;
+}
+ 
+#status{
+    margin-top:20px;
+    font-weight:bold;
+    color:green;
+}
+</style>
+ 
+</head>
+<body>
+ 
+<div class="container">
+ 
+<h2>Merge Excel Workbooks V3</h2>
+ 
+<div class="drop">
+    Click or Drop Excel Files Here
+<br><br>
+<input type="file" id="excelFiles" multiple accept=".xlsx,.xls">
+</div>
+ 
+<center>
+<button id="mergeBtn">Merge Files</button>
+</center>
+ 
+<div id="status"></div>
+ 
+</div>
+ 
+<!-- XLSX LIBRARY -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+ 
+<script>
+ 
+function normalizeSheetName(name){
+    let n = name.toLowerCase().trim();
+ 
+    if (n === "2780" || n.includes("main") || n.includes("2780")) {
+        return "MAIN";
+    }
+ 
+    if (n.includes("spare") || n.includes("139")) {
+        return "SPARE";
+    }
+ 
+    return name.trim().toUpperCase();
+}
+ 
+const STANDARD_HEADER = [
+    "NO.",
+    "REGION",
+    "BATCH#",
+    "MATCODE",
+    "ICCID",
+    "MIN",
+    "Lot No.",
+    "School ID",
+    "School Name",
+    "Region",
+    "Municipality",
+    "Barangay"
+];
+ 
+async function mergeExcel() {
+ 
+    const files = document.getElementById("excelFiles").files;
+ 
+    if (files.length === 0) {
+        alert("Please select Excel files.");
+        return;
+    }
+ 
+    if (files.length > 20) {
+        alert("Maximum of 20 files only.");
+        return;
+    }
+ 
+    document.getElementById("status").innerHTML = "Reading files...";
+ 
+    const mergedWorkbook = XLSX.utils.book_new();
+    const mergedSheets = {};
+    const headers = {};
+ 
+    for (const file of files) {
+ 
+        const data = await file.arrayBuffer();
+        const workbook = XLSX.read(data, { type: "array" });
+ 
+        for (const sheetName of workbook.SheetNames) {
+ 
+            const mergedSheetName = normalizeSheetName(sheetName);
+            const sheet = workbook.Sheets[sheetName];
+ 
+            const rows = XLSX.utils.sheet_to_json(sheet, {
+                header: 1,
+                defval: ""
+            });
+ 
+            if (!rows || rows.length === 0) continue;
+ 
+            if (!mergedSheets[mergedSheetName]) {
+                mergedSheets[mergedSheetName] = [];
+                headers[mergedSheetName] = STANDARD_HEADER;
+            }
+ 
+            for (let i = 1; i < rows.length; i++) {
+ 
+                if (rows[i] && rows[i].length > 0) {
+ 
+                    const row = rows[i].slice(0, STANDARD_HEADER.length);
+ 
+                    while (row.length < STANDARD_HEADER.length) {
+                        row.push("");
+                    }
+ 
+                    mergedSheets[mergedSheetName].push(row);
+                }
+            }
+        }
+    }
+ 
+    document.getElementById("status").innerHTML = "Removing duplicates...";
+ 
+    for (const sheetName in mergedSheets) {
+ 
+        const seen = new Set();
+        const uniqueRows = [];
+ 
+        for (const row of mergedSheets[sheetName]) {
+            const key = JSON.stringify(row);
+            if (!seen.has(key)) {
+                seen.add(key);
+                uniqueRows.push(row);
+            }
+        }
+ 
+        const finalData = [
+            headers[sheetName],
+            ...uniqueRows
+        ];
+ 
+        const ws = XLSX.utils.aoa_to_sheet(finalData);
+ 
+        XLSX.utils.book_append_sheet(
+            mergedWorkbook,
+            ws,
+            sheetName.substring(0, 31)
+        );
+    }
+ 
+    XLSX.writeFile(mergedWorkbook, "Merged_Workbook.xlsx");
+ 
+    let totalRows = 0;
+    for (const sheet in mergedSheets) {
+        totalRows += mergedSheets[sheet].length;
+    }
+ 
+    document.getElementById("status").innerHTML = `
+<b>Finished!</b><br><br>
+        Total Files : ${files.length}<br>
+        Total Sheets : ${Object.keys(mergedSheets).length}<br>
+        Total Rows : ${totalRows}
+    `;
+}
+ 
+/* IMPORTANT FIX: make function global */
+window.mergeExcel = mergeExcel;
+ 
+/* optional button binding (more stable than onclick) */
+document.getElementById("mergeBtn").addEventListener("click", mergeExcel);
+ 
+</script>
+ 
+</body>
+</html>
+
+Script by Ivan
